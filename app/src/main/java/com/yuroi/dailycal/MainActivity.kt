@@ -28,8 +28,15 @@ import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.VideoRecordEvent
+import androidx.core.content.ContentProviderCompat.requireContext
 import androidx.core.content.PermissionChecker
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.yuroi.dailycal.databinding.ActivityMainBinding
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -44,6 +51,7 @@ class MainActivity : AppCompatActivity() {
 
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
+    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     private lateinit var cameraExecutor: ExecutorService
 
@@ -66,6 +74,70 @@ class MainActivity : AppCompatActivity() {
 
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
+
+    private fun recognizeText(image: InputImage) {
+
+        // [START get_detector_default]
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        // [END get_detector_default]
+
+        // [START run_detector]
+        val result = recognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                // Task completed successfully
+                // [START_EXCLUDE]
+                // [START get_text]
+                for (block in visionText.textBlocks) {
+                    val boundingBox = block.boundingBox
+                    val cornerPoints = block.cornerPoints
+                    val text = block.text
+
+                    Log.d(TAG, text)
+                    for (line in block.lines) {
+                        // ...
+                        for (element in line.elements) {
+                            // ...
+                        }
+                    }
+                }
+                // [END get_text]
+                // [END_EXCLUDE]
+            }
+            .addOnFailureListener { e ->
+                // Task failed with an exception
+                // ...
+            }
+        // [END run_detector]
+    }
+
+    private fun processTextBlock(result: Text) {
+        // [START mlkit_process_text_block]
+        val resultText = result.text
+        for (block in result.textBlocks) {
+            val blockText = block.text
+            val blockCornerPoints = block.cornerPoints
+            val blockFrame = block.boundingBox
+            for (line in block.lines) {
+                val lineText = line.text
+                val lineCornerPoints = line.cornerPoints
+                val lineFrame = line.boundingBox
+                for (element in line.elements) {
+                    val elementText = element.text
+                    val elementCornerPoints = element.cornerPoints
+                    val elementFrame = element.boundingBox
+                    Log.d(TAG, elementText)
+                }
+            }
+        }
+        // [END mlkit_process_text_block]
+    }
+
+    private fun getTextRecognizer(): TextRecognizer {
+        // [START mlkit_local_doc_recognizer]
+        return TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        // [END mlkit_local_doc_recognizer]
+    }
+
 
     private fun takePhoto() {
         // Get a stable reference of the modifiable image capture use case
@@ -99,12 +171,19 @@ class MainActivity : AppCompatActivity() {
                     Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
                 }
 
-                override fun
-                        onImageSaved(output: ImageCapture.OutputFileResults){
+                override fun onImageSaved(output: ImageCapture.OutputFileResults){
                     val msg = "Photo capture succeeded: ${output.savedUri}"
                     Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
+                    val image: InputImage
+                    try {
+                        image = InputImage.fromFilePath(this@MainActivity, output.savedUri!!)
+                        recognizeText(image)
+                    } catch (e: IOException) {
+                        e.printStackTrace()
+                    }
                     Log.d(TAG, msg)
                 }
+
             }
         )
     }
